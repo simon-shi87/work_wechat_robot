@@ -30,12 +30,14 @@ def send_wechat_msg(key, message):
             "content": message
         }
     }
+    headers = {
+        "Content-Type": "application/json;charset=UTF-8"
+    }
     if not key and KEY:
         key = KEY
-    if not isinstance(message, str):
-        data = message
+
     LOG.debug("send wechat msg: %s", data)
-    respose = requests.post(WECAHT_API.format(key), json=data)
+    respose = requests.post(WECAHT_API.format(key), headers=headers, data=json.dumps(data))
     LOG.info("send message result: %s:%s", respose.status_code, respose.text)
     if respose.status_code == 200:
         return True
@@ -60,42 +62,42 @@ def prometheus_webhook():
     data = request.get_json()
     LOG.debug("receive msg: %s", data)
     msg = ""
+    alert_status = data.get('status') 
+    alert_len = len(data.get('alerts'))
+    alert_name = data.get('commonLabels').get("alertname")
+    alert_0 = data.get('alerts')[0]
+    env = alert_0.get('labels').get('env')
+    desc = alert_0.get('annotations').get('message')
+    if desc == None :
+        desc = alert_0.get('annotations').get('description')
+
+    severity = alert_0.get('labels').get('severity')
+    if alert_status == "resolved":
+        msg = "[**[{}] {}**]()\n\n".format(alert_status,alert_name)
+    else:
+        msg = "[**[{}:{}] {}**]()\n\n".format(alert_status,alert_len,alert_name)
+
+    msg = msg + "*Environment:* " + env +" \n\n*Description:* "+ desc + " \n\n*Severity:* `" + severity + "` \n\n*Alert details*: \n\n"
+
+    container_msg = ""
+    detail_msg = ""
     for alert in data.get('alerts'):
-        status = alert.get('status')
-        status_color = 'warning' if status == 'firing' else 'info'
-        status = '告警' if status == 'firing' else '已恢复'
-        labels = alert.get('labels', {})
-        annotations = alert.get('annotations', {})
-        resource_name = try_get_value(labels,
-                                      ["resource_name", "deployment", "daemonset", "statefulset", "pod", "pod_name",
-                                       "instance"], 'cluster')
-        resource = "{namespace}{resource_name}".format(
-            namespace="{}/".format(labels.get("namespace")) if labels.get("namespace") else '',
-            resource_name=resource_name)
+        container = alert.get('labels').get('container')
+        detail = alert.get('annotations').get('detail')
 
-        message = try_get_value(annotations, ["message", "description"], "")
-        action = annotations.get("Action", '')
-        runbook_url = annotations.get("runbook_url", '')
-        action_msg = ""
-        if action:
-            if runbook_url:
-                action_msg = ">处理建议: <font color=\"comment\"> {}</font> [more]({})  ".format(action, runbook_url)
+        if container != None:
+            if container_msg != "":
+                container_msg = container_msg + "```*container:* "+container+ "```\n\n"
             else:
-                action_msg = '''>处理建议: <font color="comment">{}</font>  '''.format(action)
+                container_msg = "```*container:* "+container+"```\n\n"
 
-        msg = '''
-<font color="{_status_color}">{_status}</font>: [{_title}]({_alert_namager_url})  
->级别: <font color="comment">{_severity}</font>  
->资源: <font color="comment">{_resource}</font> [监控源]({_source})  
->描述: <font color="comment">{_message}</font> 
-{_action_msg}  
-\n
-'''.format(_title=labels.get("alertname", ' '), _resource=resource, _status_color=status_color, _status=status,
-           _message=message, _source=alert.get('generatorURL'), _action_msg=action_msg,
-           _severity=try_get_value(labels, ["Severity", "severity"], "critical"),
-           _alert_namager_url=ALEAT_MANAGER_URL if ALEAT_MANAGER_URL else data.get('externalURL', ' '))
+        if detail != None:
+            if detail_msg != "":
+                detail_msg = detail_msg+"```"+detail+"```\n\n"
+            else:
+                detail_msg = "```"+ detail +"```\n\n"
 
-        result = send_wechat_msg(receiver, msg)
+    result = send_wechat_msg(receiver, msg+container_msg+detail_msg)
 
     return get_result(error=result)
 
