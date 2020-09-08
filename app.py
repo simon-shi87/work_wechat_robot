@@ -67,9 +67,6 @@ def prometheus_webhook():
     alert_name = data.get('commonLabels').get("alertname")
     alert_0 = data.get('alerts')[0]
     env = alert_0.get('labels').get('env')
-    desc = alert_0.get('annotations').get('message')
-    if desc == None :
-        desc = alert_0.get('annotations').get('description')
 
     severity = alert_0.get('labels').get('severity')
     if alert_status == "resolved":
@@ -77,19 +74,12 @@ def prometheus_webhook():
     else:
         msg = "[**[{}:{}] {}**]()\n\n".format(alert_status,alert_len,alert_name)
 
-    msg = msg + "*Environment:* " + env +" \n\n*Description:* "+ desc + " \n\n*Severity:* `" + severity + "` \n\n*Alert details*: \n\n"
+    msg = msg + "*Environment:* " + env +"\n\n*Severity:* `" + severity + "` \n\n*Alert details*: \n\n"
 
     container_msg = ""
     detail_msg = ""
     for alert in data.get('alerts'):
-        container = alert.get('labels').get('container')
-        detail = alert.get('annotations').get('detail')
-
-        if container != None:
-            if container_msg != "":
-                container_msg = container_msg + "```*container:* "+container+ "```\n\n"
-            else:
-                container_msg = "```*container:* "+container+"```\n\n"
+        detail = alert.get('annotations').get('message')
 
         if detail != None:
             if detail_msg != "":
